@@ -1,70 +1,88 @@
 package com.example.employeebackend.controller;
 
+import com.example.employeebackend.dto.EmployeeDto;
 import com.example.employeebackend.entities.Employee;
-import com.example.employeebackend.exceptions.ResourceNotFoundException;
-import com.example.employeebackend.repository.EmployeeRepository;
+import com.example.employeebackend.exceptions.BadRequestException;
+import com.example.employeebackend.service.EmployeeService;
+import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
+import javax.validation.Valid;
 import java.util.List;
-import java.util.Map;
+import java.util.stream.Collectors;
 
-@CrossOrigin(origins = "http://localhost:8080")
+@CrossOrigin(origins = "http://localhost:4201")
 @RestController
-@RequestMapping("/api/v1")
+@RequestMapping(value = "/api/v1", produces = MediaType.APPLICATION_JSON_VALUE)
 public class EmployeeRestController {
 
-    @Autowired
-    private EmployeeRepository employeeRepository;
+    private EmployeeService employeeService;
+    private ModelMapper modelMapper;
 
-    // GET ALL EMPLOYEES
-    @GetMapping("/employees")
-    public List<Employee> getAllEmployees() {
-        return employeeRepository.findAll();
+    @Autowired
+    public EmployeeRestController(EmployeeService employeeService, ModelMapper modelMapper) {
+
+        this.employeeService = employeeService;
+        this.modelMapper = modelMapper;
+    }
+
+    private EmployeeDto modelMapperTransform(Employee employee) {
+        return modelMapper.map(employee, EmployeeDto.class);
     }
 
     //    CREATE EMPLOYEE
     @PostMapping("/employees")
-    public Employee create(@RequestBody Employee employee) {
-        return employeeRepository.save(employee);
+    public ResponseEntity<EmployeeDto> saveEmployee(@Valid @RequestBody EmployeeDto employeeDto) {
+
+        if (employeeDto == null) {
+            throw new BadRequestException("The employee can not be empty");
+        }
+        var employee = this.modelMapper.map(employeeDto, Employee.class);
+        employee = this.employeeService.create(employee);
+
+        return new ResponseEntity<>(this.modelMapperTransform(employee), HttpStatus.CREATED);
+    }
+
+    // GET ALL EMPLOYEES
+    @GetMapping("/employees")
+
+    public ResponseEntity<List<EmployeeDto>> getAllEmployees() {
+
+        var listEmployee = this.employeeService.getAllEmployees()
+                .stream()
+                .map(employee -> modelMapper.map(employee, EmployeeDto.class))
+                .collect(Collectors.toList());
+        return new ResponseEntity<>(listEmployee, HttpStatus.OK);
     }
 
     //    GET EMPLOYEE BY ID
     @GetMapping("/employees/{id}")
-    public ResponseEntity<Employee> getEmployeeById(@PathVariable("id") Long id) {
+    public ResponseEntity<EmployeeDto> getEmployeeById(@PathVariable("id") Long id) {
 
-        Employee employee = employeeRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Employee does not exist with id: " + id));
-        return ResponseEntity.ok(employee);
+        var employee = this.employeeService.searchById(id);
+        return new ResponseEntity<>(this.modelMapperTransform(employee), HttpStatus.OK);
     }
 
     //    UPDATE EMPLOYEE
     @PutMapping("/employees/{id}")
-    public ResponseEntity<Employee> updateEmployee(@PathVariable("id") Long id, @RequestBody Employee employeeDetails) {
+    public ResponseEntity<EmployeeDto> updateEmployee(@Valid @PathVariable("id") Long id, @RequestBody EmployeeDto employeeDto) {
 
-        Employee employee = employeeRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Employee does not exist with id: \" + id"));
+        var employee = this.modelMapper.map(employeeDto, Employee.class);
+        employee = this.employeeService.update(id, employee);
 
-        employee.setFirstName(employeeDetails.getFirstName());
-        employee.setLastName(employeeDetails.getLastName());
-        employee.setAge(employeeDetails.getAge());
-        employee.setEmail(employeeDetails.getEmail());
-
-        Employee updateEmployee = employeeRepository.save(employee);
-        return ResponseEntity.ok(updateEmployee);
+        return new ResponseEntity<>(this.modelMapperTransform(employee), HttpStatus.OK);
     }
 
     //    DELETE EMPLOYEE
     @DeleteMapping("/employees/{id}")
-    public ResponseEntity<Map<String, Boolean>> deleteEmploye(@PathVariable("id") Long id) {
+    public ResponseEntity delete(@PathVariable("id") Long id) {
 
-        Employee employee = employeeRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Employee not exist with id :" + id));
-
-        employeeRepository.delete(employee);
-        Map<String, Boolean> response = new HashMap<>();
-        response.put("Deleted", Boolean.TRUE);
-
-        return ResponseEntity.ok(response);
+        this.employeeService.delete(id);
+        return new ResponseEntity<>(HttpStatus.OK);
     }
 
 }
